@@ -1,8 +1,26 @@
 # EnviousCooler
 
-**Smart Razer cooling pad control for Mac, by Envious Labs.**
+### Cooling, quietly.
 
-Free and open source under the [MIT license](LICENSE).
+**Smooth Razer cooling pad control for Mac, by [Envious Labs](https://enviouslabs.co).**
+
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
+![Apple Silicon](https://img.shields.io/badge/Apple-Silicon-64748b)
+
+A small native menu-bar app that follows your Mac's temperature, ramps the cooling pad smoothly, and gives you a simple RGB brightness slider. Free and open source.
+
+<p align="center">
+  <img src="docs/images/enviouscooler.png" alt="EnviousCooler dashboard showing automatic cooling, Mac chip temperature, requested fan speed, presets and RGB brightness" width="390">
+</p>
+
+- **Automatic cooling:** a continuous temperature curve, with smoothing for quieter changes.
+- **Quick controls:** Quiet, Balanced and Maximum presets in a native dashboard.
+- **RGB strength:** one brightness slider that keeps your existing lighting effect.
+- **Always nearby:** lives in the menu bar and can start at login.
+
+[Install from source](#build-and-install) · [How cooling works](#controls) · [Contribute](CONTRIBUTING.md)
+
 
 Local menu-bar app, dashboard and automatic cooling for the Razer Laptop Cooling Pad (`1532:0f43`). No cloud connection or third-party driver is required.
 
@@ -70,7 +88,7 @@ Fan targets are requested values, not measured RPM. This pad's protocol has no v
 - `main.swift`: production CLI, with diagnostics compiled only on explicit opt-in.
 - `runtime_tools.py`: shared atomic installation helpers.
 
-`build.py` runs 59 native adversarial assertions, nine protocol/governor tests and five service tests and five installer fault/locking tests. Tests use fake device replies and clocks to cover corrupted/truncated responses, disconnection, bounded retries/deadlines, invalid temperatures, malformed/expired requests, stale status and atomic executable replacement. Removing the deadline was mutation-tested and correctly failed the checks. See [the review](REVIEW.md) for evidence and remaining limits.
+`build.py` runs 59 native adversarial assertions, nine protocol/governor tests, five service tests and twelve installer fault/locking tests. Tests use fake device replies and clocks to cover corrupted/truncated responses, disconnection, bounded retries/deadlines, invalid temperatures, malformed/expired requests, stale status and atomic executable replacement. Removing the deadline was mutation-tested and correctly failed the checks. See [the review](REVIEW.md) for evidence and remaining limits.
 
 Installed app: `~/Applications/EnviousCooler.app`. Controller, state, logs and the private lighting queue: `~/Library/Application Support/EnviousCooler/`. Login agents: `~/Library/LaunchAgents/co.enviouslabs.enviouscooler*.plist`. The hardware fan needs the supplied AC adapter.
 
