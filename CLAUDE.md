@@ -11,6 +11,7 @@ Native macOS menu-bar app and local controller for the Razer Laptop Cooling Pad,
 - `Automatic.swift`: cooling, power lifecycle and brightness request processing.
 - `Shared.swift`: the typed request contract and file/clock helpers.
 - `install-menu.py`: app packaging, migration from the predecessor and rollback.
+- `docs/branding.md`: approved silver airflow E identity and app/menu-bar artwork.
 
 ## Validation
 

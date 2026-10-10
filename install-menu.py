@@ -201,9 +201,11 @@ def install_locked():
         shutil.copy2(ROOT / "enviouscooler-menu", contents / "MacOS/EnviousCooler")
         for name in ["enviouscooler", "auto-mode.py", "runtime_tools.py"]:
             shutil.copy2(ROOT / name, contents / "Resources" / name)
+        shutil.copy2(ROOT / "assets/AppIcon.icns", contents / "Resources/AppIcon.icns")
         info = {"CFBundleIdentifier": IDENTIFIER, "CFBundleName": "EnviousCooler",
                 "CFBundleDisplayName": "EnviousCooler", "CFBundleExecutable": "EnviousCooler",
                 "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "2",
+                "CFBundleIconFile": "AppIcon.icns",
                 "LSUIElement": True, "NSHighResolutionCapable": True, "LSMinimumSystemVersion": "14.0",
                 "PythonExecutable": shutil.which("python3") or sys.executable}
         atomic_bytes(plistlib.dumps(info), contents / "Info.plist")

@@ -24,7 +24,9 @@ A small native menu-bar app that follows your Mac's temperature, ramps the cooli
 
 Local menu-bar app, dashboard and automatic cooling for the Razer Laptop Cooling Pad (`1532:0f43`). No cloud connection or third-party driver is required.
 
-Open **EnviousCooler** in `~/Applications`, or use the fan icon in the menu bar. The dashboard shows Mac chip temperature, requested fan speed, automatic-mode status and RGB brightness. Closing the dashboard or quitting the menu app leaves automatic cooling running. Both start at login when enabled.
+Open **EnviousCooler** in `~/Applications`, or use the airflow E icon in the menu bar. The dashboard shows Mac chip temperature, requested fan speed, automatic-mode status and RGB brightness. Closing the dashboard or quitting the menu app leaves automatic cooling running. Both start at login when enabled.
+
+The app uses a silver airflow E on a graphite tile, with a matching monochrome menu-bar mark. See [the approved identity](docs/branding.md) for artwork and regeneration instructions.
 
 ## Controls
 
