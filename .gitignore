@@ -1,0 +1,16 @@
+enviouscooler-probe
+enviouscooler
+enviouscooler-menu
+inspect-input
+native-checks
+enviouscooler-diagnostic
+live-discovery.json
+__pycache__/
+.review/
+session-log.md
+*.log
+*.app/
+.DS_Store
+razer-pad
+razer-pad-menu
+razer-pad-diagnostic
