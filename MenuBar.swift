@@ -35,8 +35,7 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     NSApp.setActivationPolicy(.accessory)
     item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    item.button?.image = NSImage(
-      systemSymbolName: "fanblades", accessibilityDescription: "Razer cooling pad")
+    item.button?.image = BrandIcon.menuBarImage()
     item.button?.imagePosition = .imageLeading
     let menu = NSMenu()
     menu.delegate = self
