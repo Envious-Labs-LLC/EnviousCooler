@@ -26,14 +26,21 @@ DOMAIN = f"gui/{os.getuid()}"
 lock_descriptor = None
 
 
-def run(*args, check=True):
+def run(*args, check=True, _locked=False):
+    # Only short-lived service changes share the lock; anything else, such as
+    # an app started with `open`, would keep a descriptor number it never had.
     environment = os.environ.copy()
+    environment.pop(LOCK_VARIABLE, None)
     descriptors = ()
-    if lock_descriptor is not None:
+    if _locked and lock_descriptor is not None:
         environment[LOCK_VARIABLE] = str(lock_descriptor)
         descriptors = (lock_descriptor,)
     return subprocess.run(args, check=check, capture_output=True, text=True,
                           timeout=30, env=environment, pass_fds=descriptors)
+
+
+def run_locked(*args, check=True):
+    return run(*args, check=check, _locked=True)
 
 
 def registered(label):
@@ -158,13 +165,13 @@ def rollback(stage_root, backup, committed, migrated, snapshots, current_auto, l
     def remove_empty_folder():
         if FOLDER.exists() and not any(FOLDER.iterdir()): FOLDER.rmdir()
     def restart_legacy():
-        if LEGACY_APP.exists(): run(sys.executable, str(LEGACY_APP / "Contents/Resources/auto-mode.py"), "on")
+        if LEGACY_APP.exists(): run_locked(sys.executable, str(LEGACY_APP / "Contents/Resources/auto-mode.py"), "on")
     def reopen_previous():
         if previous_restored: run("open", str(APP), "--args", "--dashboard")
         elif LEGACY_APP.exists(): run("open", str(LEGACY_APP), "--args", "--dashboard")
     if committed:
         attempt("stop candidate UI", lambda: stop_menu(APP, "EnviousCooler"))
-        attempt("stop updated controller", lambda: run(sys.executable, str(ROOT / "auto-mode.py"), "off"))
+        attempt("stop updated controller", lambda: run_locked(sys.executable, str(ROOT / "auto-mode.py"), "off"))
         attempt("save failed bundle", save_candidate)
     attempt("restore previous bundle", restore_previous)
     if migrated: attempt("restore prototype data", restore_data)
@@ -172,7 +179,7 @@ def rollback(stage_root, backup, committed, migrated, snapshots, current_auto, l
     for label, (data, _) in snapshots.items():
         attempt(f"restore login file {label}", lambda label=label, data=data: restore_agent_file(label, data))
     if current_auto and previous_restored:
-        attempt("restart previous controller", lambda: run(sys.executable, str(APP / "Contents/Resources/auto-mode.py"), "on"))
+        attempt("restart previous controller", lambda: run_locked(sys.executable, str(APP / "Contents/Resources/auto-mode.py"), "on"))
     if legacy_auto: attempt("restart prototype controller", restart_legacy)
     for label in [IDENTIFIER, LEGACY_ID]:
         attempt(f"restore {label}", lambda label=label: restore_registration(label, snapshots[label]))
@@ -220,8 +227,8 @@ def install_locked():
         stop_menu(LEGACY_APP, "RazerCoolingPad")
         unload(IDENTIFIER); unload(LEGACY_ID)
         if legacy_manager.exists():
-            run(sys.executable, str(legacy_manager), "off")
-        run(sys.executable, str(ROOT / "auto-mode.py"), "off")
+            run_locked(sys.executable, str(legacy_manager), "off")
+        run_locked(sys.executable, str(ROOT / "auto-mode.py"), "off")
         # A manager's off command may create an empty new folder. Remove only that
         # verified-empty directory, never existing runtime data.
         if LEGACY_FOLDER.exists() and FOLDER.exists() and not any(FOLDER.iterdir()):
@@ -236,7 +243,7 @@ def install_locked():
             "ProgramArguments": [str(APP / "Contents/MacOS/EnviousCooler")],
             "RunAtLoad": True, "ProcessType": "Interactive"}), AGENT)
         if current_auto or legacy_auto:
-            result = run(sys.executable, str(APP / "Contents/Resources/auto-mode.py"), "on")
+            result = run_locked(sys.executable, str(APP / "Contents/Resources/auto-mode.py"), "on")
             if json.loads(result.stdout).get("status") != "running":
                 raise RuntimeError("Updated controller did not report healthy operation.")
         if registered(LEGACY_ID) or registered(LEGACY_LABEL):

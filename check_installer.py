@@ -62,6 +62,33 @@ class InstallerChecks(unittest.TestCase):
                 self.assertEqual(allowed.returncode, 0, allowed.stderr)
                 self.assertIn("owned", allowed.stdout)
 
+    def test_only_service_changes_receive_the_management_lock(self):
+        with patch.object(installer, "lock_descriptor", 7), \
+                patch.dict(os.environ, {runtime_tools.LOCK_VARIABLE: "9"}), \
+                patch.object(installer.subprocess, "run") as child:
+            installer.run("open", str(self.app), "--args", "--dashboard")
+            installer.run_locked(sys.executable, "auto-mode.py", "off")
+        opened, locked = child.call_args_list
+        self.assertNotIn(runtime_tools.LOCK_VARIABLE, opened.kwargs["env"])
+        self.assertEqual(opened.kwargs["pass_fds"], ())
+        self.assertEqual(locked.kwargs["env"][runtime_tools.LOCK_VARIABLE], "7")
+        self.assertEqual(locked.kwargs["pass_fds"], (7,))
+
+    def test_rollback_open_calls_never_receive_the_management_lock(self):
+        self.legacy.mkdir()
+        with patch.object(installer, "lock_descriptor", 7), \
+                patch.object(installer.subprocess, "run") as child:
+            child.return_value = subprocess.CompletedProcess([], 0, "{}", "")
+            try:
+                installer.rollback(self.stage, self.backup, True, False, self.snapshots, True, True)
+            except RuntimeError:
+                pass
+        opens = [call for call in child.call_args_list if call.args[0][0] == "open"]
+        self.assertTrue(opens)
+        for call in opens:
+            self.assertNotIn(runtime_tools.LOCK_VARIABLE, call.kwargs["env"])
+            self.assertEqual(call.kwargs["pass_fds"], ())
+
     def test_rollback_continues_after_shutdown_failure(self):
         def fail_stop(*args, **kwargs):
             if args[-1] == "off": raise RuntimeError("shutdown failed")

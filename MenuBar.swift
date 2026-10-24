@@ -17,6 +17,7 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   let brightnessSlider = NSSlider(value: 100, minValue: 0, maxValue: 100, target: nil, action: nil)
   let brightnessLabel = NSTextField(labelWithString: "—")
   var reading: [String: Any] = [:]
+  var thermals: Thermals?
   var lastError: String?
   let temperatureLabel = NSTextField(labelWithString: "—")
   let fanLabel = NSTextField(labelWithString: "—")
@@ -64,6 +65,20 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     return stateIsFresh(reading)
       || (reading["status"] as? String == "sleeping" && Date().timeIntervalSince(date) >= -2)
   }
+  // Manual modes have no controller reporting temperature, so read the sensors here.
+  func chipTemperature() -> Double? {
+    do {
+      if thermals == nil { thermals = try Thermals() }
+      return try thermals!.chipTemperature().celsius
+    } catch {
+      thermals = nil
+      return nil
+    }
+  }
+  // The last acknowledged manual preset; automatic cooling selects none.
+  var selectedRPM: Int? {
+    !active() && reading["mode"] as? String == "manual" ? reading["commanded_rpm"] as? Int : nil
+  }
   func refresh() {
     reading =
       (try? LightingFiles.read(folder.appendingPathComponent("state.json")))
@@ -71,7 +86,7 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "_invalid_state": true
       ]
     let isAuto = active()
-    let temp = isAuto ? reading["temperature_celsius"] as? Double : nil
+    let temp = isAuto ? reading["temperature_celsius"] as? Double : chipTemperature()
     let rpm =
       reading["mode"] as? String == "automatic" && !isAuto ? nil : reading["commanded_rpm"] as? Int
     temperatureLabel.stringValue = temp.map { String(format: "%.1f °C", $0) } ?? "Unavailable"
@@ -93,7 +108,11 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
           : (reading["mode"] as? String == "automatic" ? "Controller not responding" : "Manual"))
     autoButton.state = automaticEnabled ? .on : .off
     autoButton.isEnabled = !busy && !brightnessBusy
-    for button in buttons { button.isEnabled = !busy && !brightnessBusy }
+    let manualRPM = selectedRPM
+    for button in buttons {
+      button.isEnabled = !busy && !brightnessBusy
+      button.state = manualRPM == button.tag ? .on : .off
+    }
     if !brightnessBusy, isAuto, let percent = reading["brightness_percent"] as? Double,
       percent.isFinite, (0...100).contains(percent),
       let stamp = reading["updated_at"] as? String,
@@ -141,10 +160,13 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     item.menu?.addItem(.separator())
     let automatic = add("Automatic cooling", action: #selector(toggleAutomatic))
     automatic.state = automaticEnabled ? .on : .off
-    _ = add("Quiet · 800 RPM", action: #selector(preset(_:)), tag: 800)
-    _ = add("Balanced · 1,500 RPM", action: #selector(preset(_:)), tag: 1500)
-    _ = add("Maximum · 3,200 RPM", action: #selector(preset(_:)), tag: 3200)
-    _ = add("Fan off", action: #selector(preset(_:)), tag: 0)
+    let manualRPM = selectedRPM
+    for (title, rpm) in [
+      ("Quiet · 800 RPM", 800), ("Balanced · 1,500 RPM", 1500), ("Maximum · 3,200 RPM", 3200),
+      ("Fan off", 0),
+    ] {
+      add(title, action: #selector(preset(_:)), tag: rpm).state = manualRPM == rpm ? .on : .off
+    }
     item.menu?.addItem(.separator())
     _ = add("Open dashboard…", action: #selector(showDashboard))
     _ = add("Quit menu-bar app", action: #selector(quit))
@@ -365,6 +387,7 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     for (title, rpm) in [("Quiet", 800), ("Balanced", 1500), ("Maximum", 3200)] {
       let button = NSButton(title: title, target: self, action: #selector(preset(_:)))
       button.bezelStyle = .rounded
+      button.setButtonType(.pushOnPushOff)
       button.tag = rpm
       buttons.append(button)
       presets.addArrangedSubview(button)

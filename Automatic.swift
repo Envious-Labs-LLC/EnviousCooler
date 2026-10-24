@@ -161,14 +161,7 @@ final class Automatic {
     var validTemperature = false
     do {
       if thermals == nil { thermals = try Thermals() }
-      let rows = try thermals!.readings()
-      let selected = rows.filter {
-        ["cpu", "gpu", "soc_die"].contains($0["kind"] as? String ?? "")
-      }
-      guard let temperature = selected.compactMap({ $0["celsius"] as? Double }).max() else {
-        throw PadError(
-          "No identified chip-temperature sensors. Automatic cooling cannot use unrelated sensors.")
-      }
+      let (temperature, sensorCount) = try thermals!.chipTemperature()
       let critical = ProcessInfo.processInfo.thermalState == .critical
       validTemperature = true
       let rpm = governor.update(temperature: temperature, now: now, dt: dt, critical: critical)
@@ -179,7 +172,7 @@ final class Automatic {
       writeState([
         "status": "running", "temperature_celsius": temperature,
         "smoothed_temperature_celsius": governor.smoothed!,
-        "sensor_count": selected.count, "source": "hottest identified Mac chip sensor",
+        "sensor_count": sensorCount, "source": "hottest identified Mac chip sensor",
         "commanded_rpm": rpm, "measured_rpm": NSNull(),
         "brightness_percent": brightnessPercent.map { $0 as Any } ?? NSNull(),
       ])
