@@ -200,7 +200,11 @@ final class Automatic {
       let rpm = governor.update(temperature: temperature, now: now, dt: dt, critical: critical)
       observePad()
       // Periodic refresh catches a pad power-cycle without USB removal.
-      if Int(now / 30) != Int((now - min(dt, 5)) / 30) { lastSent = nil }
+      if Int(now / 30) != Int((now - min(dt, 5)) / 30) {
+        // A refresh that lands on a pending pad change is the correction, so it is reported.
+        if watch.changedReads > 0 { correcting = true }
+        lastSent = nil
+      }
       try send(rpm)
       lighting()
       writeState([
