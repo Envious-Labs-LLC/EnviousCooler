@@ -17,6 +17,8 @@ Native macOS menu-bar app and local controller for the Razer Laptop Cooling Pad,
 
 Run `python3 build.py` for production builds and offline checks. The checks must not require a connected pad or modify launchd.
 
+Test menu changes on the real installed app before calling them done. Computer-use cannot grant this menu-bar-only app, so drive its menu through the accessibility `AXExtrasMenuBar` of `co.enviouslabs.enviouscooler-menu` (press the status item, read `AXMenuItemMarkChar`, press items). Pad-button behaviour needs Saurabh at the pad; the pad sends no button events.
+
 Run `python3 install-menu.py` only for an explicitly requested local installation/update. It preserves whether cooling was running and must not reset hardware lighting preferences.
 
 The normal app has an 800 RPM minimum. Low-speed experiments require the separate `python3 build.py --diagnostics` build and an explicit user request. Do not treat missing USB events as proof that the pad did not flash red.
