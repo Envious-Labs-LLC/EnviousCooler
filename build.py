@@ -18,7 +18,7 @@ def main():
     if sys.argv[1:] not in ([], ["--diagnostics"]):
         raise RuntimeError("Use build.py [--diagnostics]")
     compile_tool(CONTROL, "enviouscooler")
-    compile_tool(["Core.swift", "Shared.swift", "BrandIcon.swift", "MenuBar.swift"], "enviouscooler-menu")
+    compile_tool(["Core.swift", "Shared.swift", "Thermals.swift", "BrandIcon.swift", "MenuBar.swift"], "enviouscooler-menu")
     compile_tool(["Core.swift", "Shared.swift", "Thermals.swift", "Hardware.swift", "Automatic.swift", "Tests/main.swift"], "native-checks")
     subprocess.run([str(ROOT / "native-checks")], check=True)
     subprocess.run([sys.executable, str(ROOT / "check_controls.py")], check=True)

@@ -90,4 +90,16 @@ final class Thermals {
     guard !result.isEmpty else { throw PadError("No valid Mac temperature readings.") }
     return result.sorted { ($0["name"] as! String) < ($1["name"] as! String) }
   }
+
+  // The hottest identified chip sensor; unrelated sensors never drive cooling.
+  func chipTemperature() throws -> (celsius: Double, sensorCount: Int) {
+    let selected = try readings().filter {
+      ["cpu", "gpu", "soc_die"].contains($0["kind"] as? String ?? "")
+    }
+    guard let temperature = selected.compactMap({ $0["celsius"] as? Double }).max() else {
+      throw PadError(
+        "No identified chip-temperature sensors. Automatic cooling cannot use unrelated sensors.")
+    }
+    return (temperature, selected.count)
+  }
 }
