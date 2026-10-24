@@ -29,6 +29,7 @@ Scope: the installed menu app, automatic controller, USB protocol, brightness br
 
 - Temperatures use a private macOS API and the M5's exposed chip-sensor names. Future macOS changes may require revalidation.
 - Requested RPM is not a measured physical fan speed. A successful USB reply proves command acceptance, not airflow or cooling effectiveness.
+- The pad's reported speed (`0x0d/0x81`) is 0 when the pad's power button turns it off and follows its fan button. Calibration on 2026-10-24 (firmware 1.10) showed ramps with overshoot that settle within 50 RPM of 800, 1,500 and 3,200 RPM commands after 12 seconds. No independent tachometer confirmed it is a measurement. Sustained mixed fan and lighting traffic at the new polling rate is not verified on hardware.
 - Red-light cycling appears related to the former low-speed curve but its exact threshold and a corresponding USB fault signal are not established.
 - Physical unplug/replug, next-login and system sleep/wake have not been exercised in this review. The software paths and guards do not substitute for those hardware checks.
 - An OS/driver failure can leave a hardware command outcome uncertain. The UI and receipts report that uncertainty; they cannot promise physical restoration without an acknowledgement.

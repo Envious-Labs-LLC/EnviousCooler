@@ -148,4 +148,59 @@ expect(!stateIsFresh(["updated_at": true]), "malformed timestamp rejected")
 expect(shouldResumeAfterSleep(started: 100, now: 111), "missed wake recovers without last tick timestamp")
 expect(!shouldResumeAfterSleep(started: 100, now: 101), "pending sleep is not immediately cancelled")
 expect(!shouldResumeAfterSleep(started: nil, now: 111), "missing sleep origin is not invented")
+// Pad speed reports and button detection; traces from the 2026-10-24 calibration.
+let fanQuery = Packet(tid: 2, cls: 0x0d, cmd: 0x81, size: 3, args: [1, 5])
+func speedReply(_ units: UInt8) -> [UInt8] {
+  var response = reply(fanQuery)
+  response[10] = units
+  response[88] = response[2...87].reduce(0, ^)
+  return response
+}
+expect(decodeReportedRPM(speedReply(0x1e)) == 1500, "reported speed decoded in 50 RPM units")
+expect(decodeReportedRPM(speedReply(0xe0)) == 11200, "pad-off value decodes for the watcher")
+expect(PadWatch.plausible(11200) == nil && PadWatch.plausible(3400) == 3400, "only plausible speeds are shown")
+var otherArguments = speedReply(0x1e)
+otherArguments[9] = 0
+expect(decodeReportedRPM(otherArguments) == nil, "reply for another query is not a speed")
+expect(decodeReportedRPM([UInt8](repeating: 0, count: 10)) == nil, "short reply is not a speed")
+let speedPad = try Pad(transport: FakeUSB([speedReply(0x40)]), settle: {})
+let reportedSpeed = try speedPad.reportedRPM()
+expect(reportedSpeed == 3200, "pad reports its speed through a validated exchange")
+
+var watch = PadWatch()
+expect(watch.observe(1500, now: 0) == .unknown, "no acknowledged command means no verdict")
+watch.acknowledged(1500, now: 0)
+for (second, rpm) in [(0, 1500), (2, 1650), (4, 3050), (6, 3400), (10, 3300)] {
+  expect(watch.observe(rpm, now: Double(second)) == .settling, "a ramp is never a pad change")
+}
+watch.acknowledged(3200, now: 0)
+for (second, rpm) in [(1, 1650), (3, 2600), (6, 3400), (8, 3350), (11, 3250)] {
+  expect(watch.observe(rpm, now: Double(second)) == .settling, "max overshoot settles")
+}
+expect(watch.observe(3250, now: 13) == .matching, "settled speed within tolerance matches")
+watch.acknowledged(1300, now: 20)
+expect(watch.observe(1300, now: 33) == .matching, "settled automatic speed matches")
+watch.acknowledged(1300, now: 40)
+expect(watch.observe(1600, now: 41) == .settling, "one differing reading is not yet a pad change")
+expect(watch.observe(1600, now: 43) == .changedOnPad(1600), "a 300 RPM button step after a refresh is a pad change")
+watch.acknowledged(1300, now: 43, correction: true)
+expect(watch.observe(1600, now: 47) == .settling, "a correction restarts settling")
+expect(watch.observe(1300, now: 56) == .matching, "corrected speed matches")
+// Recorded switch-off: one stray in-range value, then values far above range.
+expect(watch.observe(2150, now: 58) == .settling, "a stray value while switching off is not a pad change")
+expect(watch.observe(11200, now: 60) == .settling, "one off reading is not yet pad off")
+expect(watch.observe(nil, now: 62) == .unknown, "a failed read is unknown")
+expect(watch.observe(10000, now: 64) == .settling, "a failed read breaks the off count")
+expect(watch.observe(0, now: 66) == .padOff, "zero or out-of-range twice means the pad is off")
+expect(watch.observe(11000, now: 68) == .padOff, "pad stays off")
+expect(watch.observe(1700, now: 70) == .settling, "first reading after power-on waits")
+expect(watch.observe(1700, now: 72) == .changedOnPad(1700), "pad back on at its own speed")
+var softwareOff = PadWatch()
+softwareOff.acknowledged(0, now: 0)
+expect(softwareOff.observe(0, now: 20) == .matching, "software fan off is never pad off")
+expect(softwareOff.observe(0, now: 22) == .matching, "repeated zeros match software fan off")
+expect(softwareOff.observe(800, now: 24) == .settling, "one start-up reading waits")
+expect(softwareOff.observe(800, now: 26) == .changedOnPad(800), "fan started on the pad")
+watch.reset()
+expect(watch.observe(0, now: 100) == .unknown, "reset forgets the acknowledged command")
 print("\(checks) native adversarial checks passed")

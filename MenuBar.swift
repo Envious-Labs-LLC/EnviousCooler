@@ -18,6 +18,16 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   let brightnessLabel = NSTextField(labelWithString: "—")
   var reading: [String: Any] = [:]
   var thermals: Thermals?
+  // Every helper process runs here, so a pad poll never collides with a command.
+  let usbQueue = DispatchQueue(label: "co.enviouslabs.enviouscooler.usb")
+  var generation = 0
+  var pollPending = false
+  var manualWatch = PadWatch()
+  var manualCommandStamp: String?
+  var manualReported: Int?
+  var manualCondition = PadCondition.unknown
+  var changedOnPad: Int?
+  var overrideNote: String?
   var lastError: String?
   let temperatureLabel = NSTextField(labelWithString: "—")
   let fanLabel = NSTextField(labelWithString: "—")
@@ -42,7 +52,10 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     menu.delegate = self
     item.menu = menu
     refresh()
-    timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in self.refresh() }
+    timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+      self.refresh()
+      self.pollPad()
+    }
     if CommandLine.arguments.contains("--dashboard") { showDashboard() }
   }
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool
@@ -77,7 +90,40 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   }
   // The last acknowledged manual preset; automatic cooling selects none.
   var selectedRPM: Int? {
-    !active() && reading["mode"] as? String == "manual" ? reading["commanded_rpm"] as? Int : nil
+    // While automatic cooling is enabled or starting, no preset is chosen.
+    !automaticEnabled && !active() && reading["mode"] as? String == "manual" && changedOnPad == nil
+      && manualCondition != .padOff ? reading["commanded_rpm"] as? Int : nil
+  }
+  func rpmText(_ rpm: Int) -> String {
+    NumberFormatter.localizedString(from: rpm as NSNumber, number: .decimal) + " RPM"
+  }
+  // Manual mode has no controller, so ask the pad what it reports.
+  func pollPad() {
+    guard !busy, !brightnessBusy, !pollPending, !automaticEnabled, !active(),
+      reading["mode"] as? String == "manual", let resources = Bundle.main.resourceURL
+    else { return }
+    pollPending = true
+    let started = generation
+    usbQueue.async {
+      let text = try? self.process(resources.appendingPathComponent("enviouscooler"), ["fan-state"])
+      let state = text.flatMap {
+        try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any]
+      }
+      DispatchQueue.main.async {
+        self.pollPending = false
+        guard started == self.generation else { return }
+        let reported = state?["reported_rpm"] as? Int
+        self.manualCondition = self.manualWatch.observe(reported, now: monotonicNow())
+        self.manualReported = PadWatch.plausible(reported)
+        if case .changedOnPad(let rpm) = self.manualCondition { self.changedOnPad = rpm }
+        if !self.brightnessBusy, let percent = state?["brightness_percent"] as? Double,
+          percent.isFinite, (0...100).contains(percent)
+        {
+          self.brightnessValue = Int(percent.rounded())
+        }
+        self.refresh()
+      }
+    }
   }
   func refresh() {
     reading =
@@ -90,8 +136,39 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let rpm =
       reading["mode"] as? String == "automatic" && !isAuto ? nil : reading["commanded_rpm"] as? Int
     temperatureLabel.stringValue = temp.map { String(format: "%.1f °C", $0) } ?? "Unavailable"
-    fanLabel.stringValue = rpm.map { "\($0) RPM requested" } ?? "Unknown"
     let status = reading["status"] as? String
+    let manual = !isAuto && reading["mode"] as? String == "manual"
+    // A new acknowledged preset clears an earlier change made on the pad.
+    if manual, let commanded = reading["commanded_rpm"] as? Int,
+      let stamp = reading["updated_at"] as? String, "\(stamp) \(commanded)" != manualCommandStamp
+    {
+      manualCommandStamp = "\(stamp) \(commanded)"
+      manualWatch.reset()
+      manualWatch.acknowledged(commanded, now: monotonicNow())
+      manualCondition = .unknown
+      manualReported = nil
+      changedOnPad = nil
+    }
+    let reported = isAuto ? reading["reported_rpm"] as? Int : (manual ? manualReported : nil)
+    let padOff = isAuto ? status == "pad_off" : manual && manualCondition == .padOff
+    let changed = manual && !padOff ? changedOnPad.map { manualReported ?? $0 } : nil
+    if padOff {
+      fanLabel.stringValue = "0 RPM, pad is off"
+    } else if let changed {
+      fanLabel.stringValue = "\(rpmText(changed)), changed on the pad"
+    } else if let rpm {
+      fanLabel.stringValue =
+        "\(rpmText(rpm)) set · "
+        + (reported.map { "pad reports \(rpmText($0))" } ?? "pad speed unavailable")
+    } else {
+      fanLabel.stringValue = "Unknown"
+    }
+    overrideNote = nil
+    if isAuto, let stamp = reading["pad_override_at"] as? String,
+      let date = ISO8601DateFormatter().date(from: stamp), Date().timeIntervalSince(date) < 60
+    {
+      overrideNote = "Fan speed changed on the pad. EnviousCooler set it back."
+    }
     let autoLabel =
       status == "sleeping"
       ? "Sleeping"
@@ -103,6 +180,8 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       ? "Status unavailable"
       : busy
         ? "Updating…"
+        : padOff
+          ? "Pad is off. Press the power button on the pad."
         : (isAuto
           ? autoLabel
           : (reading["mode"] as? String == "automatic" ? "Controller not responding" : "Manual"))
@@ -156,6 +235,7 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     _ = add("Temperature: \(temperatureLabel.stringValue)")
     _ = add("Fan: \(fanLabel.stringValue)")
     _ = add(modeLabel.stringValue)
+    if let overrideNote { _ = add(overrideNote) }
     if let error = lastError { _ = add("Last error: \(error.prefix(80))") }
     item.menu?.addItem(.separator())
     let automatic = add("Automatic cooling", action: #selector(toggleAutomatic))
@@ -197,7 +277,8 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     guard !busy && !brightnessBusy else { return }
     busy = true
     refresh()
-    DispatchQueue.global(qos: .utility).async {
+    generation += 1
+    usbQueue.async {
       do {
         guard let resources = Bundle.main.resourceURL,
           let python = Bundle.main.object(forInfoDictionaryKey: "PythonExecutable") as? String
@@ -225,6 +306,8 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.async {
           self.busy = false
           self.lastError = nil
+          // Every acknowledged preset restarts tracking, even within the same second.
+          if rpm != nil { self.manualCommandStamp = nil }
           self.refresh()
         }
       } catch {
@@ -247,7 +330,8 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     brightnessBusy = true
     let automatic = active()
     refresh()
-    DispatchQueue.global(qos: .utility).async {
+    generation += 1
+    usbQueue.async {
       do {
         let receipt: [String: Any]
         if automatic {
@@ -350,7 +434,7 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       return
     }
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 390, height: 370),
+      contentRect: NSRect(x: 0, y: 0, width: 470, height: 400),
       styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
     window.title = "EnviousCooler"
     window.isReleasedWhenClosed = false
@@ -373,6 +457,10 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       label.textColor = .secondaryLabelColor
       label.widthAnchor.constraint(equalToConstant: 95).isActive = true
       value.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+      // Pad status lines such as the power-button instruction can be long.
+      value.lineBreakMode = .byWordWrapping
+      value.maximumNumberOfLines = 0
+      value.preferredMaxLayoutWidth = 300
       let row = NSStackView(views: [label, value])
       row.orientation = .horizontal
       row.spacing = 12

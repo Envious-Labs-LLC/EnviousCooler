@@ -11,6 +11,12 @@ final class Automatic {
   var governor = Governor()
   var lastTime: Double?
   var lastSent: Int?
+  var watch = PadWatch()
+  var padCondition = PadCondition.unknown
+  var reportedRPM: Int?
+  var correcting = false
+  var correctedAt: Date?
+  var tickCount = 0
   var brightnessPercent: Double?
   var lastBrightnessAttempt = -Double.infinity
   var sleeping = false
@@ -48,6 +54,8 @@ final class Automatic {
       pad = try Pad()
       lastSent = nil
       brightnessPercent = nil
+      watch.reset()
+      correcting = false
     }
     do { try pad!.validateConnection() } catch {
       lastSent = nil
@@ -59,14 +67,38 @@ final class Automatic {
       lastSent = nil
       _ = try pad!.exchange(packet)
       lastSent = rpm
+      watch.acknowledged(rpm, now: monotonicNow(), correction: correcting)
+    }
+  }
+  // Read before writing, so a button change is seen before a refresh hides it.
+  func observePad() {
+    guard let pad, lastSent != nil else {
+      reportedRPM = nil
+      padCondition = .unknown
+      return
+    }
+    reportedRPM = try? pad.reportedRPM()
+    padCondition = watch.observe(reportedRPM, now: monotonicNow())
+    switch padCondition {
+    case .changedOnPad(let rpm):
+      if !correcting { log("Fan speed changed on the pad to \(rpm) RPM; setting it back.") }
+      correcting = true
+      lastSent = nil
+    case .matching:
+      if correcting { correctedAt = Date() }
+      correcting = false
+    default: break
     }
   }
   func lighting() {
     guard let pad else { return }
     let now = ProcessInfo.processInfo.systemUptime
-    if brightnessPercent == nil && now - lastBrightnessAttempt >= 10 {
+    // Periodic reads follow the pad's own lighting button.
+    if (brightnessPercent == nil && now - lastBrightnessAttempt >= 10)
+      || (brightnessPercent != nil && tickCount % 5 == 0)
+    {
       lastBrightnessAttempt = now
-      if let raw = try? pad.brightness() { brightnessPercent = Double(raw) * 100 / 255 }
+      brightnessPercent = (try? pad.brightness()).map { Double($0) * 100 / 255 }
     }
     try? LightingFiles.prepare()
     LightingFiles.cleanup()
@@ -136,6 +168,7 @@ final class Automatic {
       log("Resuming after sleep gap.")
     }
     inTick = true
+    tickCount += 1
     defer {
       inTick = false
       if let token = pendingSleep {
@@ -165,15 +198,24 @@ final class Automatic {
       let critical = ProcessInfo.processInfo.thermalState == .critical
       validTemperature = true
       let rpm = governor.update(temperature: temperature, now: now, dt: dt, critical: critical)
+      observePad()
       // Periodic refresh catches a pad power-cycle without USB removal.
-      if Int(now / 30) != Int((now - min(dt, 5)) / 30) { lastSent = nil }
+      if Int(now / 30) != Int((now - min(dt, 5)) / 30) {
+        // A refresh that lands on a pending pad change is the correction, so it is reported.
+        if watch.changedReads > 0 { correcting = true }
+        lastSent = nil
+      }
       try send(rpm)
       lighting()
       writeState([
-        "status": "running", "temperature_celsius": temperature,
+        "status": padCondition == .padOff ? "pad_off" : "running",
+        "temperature_celsius": temperature,
         "smoothed_temperature_celsius": governor.smoothed!,
         "sensor_count": sensorCount, "source": "hottest identified Mac chip sensor",
         "commanded_rpm": rpm, "measured_rpm": NSNull(),
+        "reported_rpm": PadWatch.plausible(reportedRPM).map { $0 as Any } ?? NSNull(),
+        "pad_override_at": correctedAt.map { ISO8601DateFormatter().string(from: $0) as Any }
+          ?? NSNull(),
         "brightness_percent": brightnessPercent.map { $0 as Any } ?? NSNull(),
       ])
       log("Fan target \(rpm) RPM.")

@@ -168,6 +168,13 @@ final class Pad {
     return r[10]
   }
 
+  // The pad's own report of its fan speed. It follows the pad's buttons, so it
+  // reveals a power-button off (0) or a fan-button change. Not a verified tachometer.
+  func reportedRPM() throws -> Int? {
+    let r = try exchange(Packet(tid: 2, cls: 0x0d, cmd: 0x81, size: 3, args: [1, 5]))
+    return decodeReportedRPM(r)
+  }
+
   func status() throws -> [String: Any] {
     let fw = try exchange(Packet(cls: 0, cmd: 0x81, size: 2, args: []))
     guard fw[5] >= 2 else { throw PadError("Firmware response has no version.") }

@@ -111,9 +111,20 @@ do {
     FileHandle.standardOutput.write(data + Data([10]))
     exit(0)
   }
+  if arguments == ["fan-state"] {
+    // Read-only: what the pad reports, which follows its own buttons.
+    let pad = try Pad()
+    let rpm = try pad.reportedRPM()
+    let brightness = try? pad.brightness()
+    try output([
+      "reported_rpm": rpm.map { $0 as Any } ?? NSNull(),
+      "brightness_percent": brightness.map { Double($0) * 100 / 255 as Any } ?? NSNull(),
+    ])
+    exit(0)
+  }
   if arguments == ["--help"] || arguments.isEmpty {
     print(
-      "enviouscooler status\nenviouscooler sensors\nenviouscooler auto-status\nenviouscooler fan quiet|balanced|max|off|800..3200\nenviouscooler brightness 0..100\nenviouscooler rgb HEX|spectrum|wave|breath|off\nUse python3 auto-mode.py on|off|status for automatic mode.\nAdd --dry-run to a settings command to inspect its packet without opening USB."
+      "enviouscooler status\nenviouscooler sensors\nenviouscooler auto-status\nenviouscooler fan-state\nenviouscooler fan quiet|balanced|max|off|800..3200\nenviouscooler brightness 0..100\nenviouscooler rgb HEX|spectrum|wave|breath|off\nUse python3 auto-mode.py on|off|status for automatic mode.\nAdd --dry-run to a settings command to inspect its packet without opening USB."
     )
     exit(0)
   }
