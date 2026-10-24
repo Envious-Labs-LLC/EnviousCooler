@@ -90,7 +90,8 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
   }
   // The last acknowledged manual preset; automatic cooling selects none.
   var selectedRPM: Int? {
-    !active() && reading["mode"] as? String == "manual" && changedOnPad == nil
+    // While automatic cooling is enabled or starting, no preset is chosen.
+    !automaticEnabled && !active() && reading["mode"] as? String == "manual" && changedOnPad == nil
       && manualCondition != .padOff ? reading["commanded_rpm"] as? Int : nil
   }
   func rpmText(_ rpm: Int) -> String {
@@ -433,7 +434,7 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       return
     }
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 390, height: 370),
+      contentRect: NSRect(x: 0, y: 0, width: 470, height: 400),
       styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
     window.title = "EnviousCooler"
     window.isReleasedWhenClosed = false
@@ -456,6 +457,10 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       label.textColor = .secondaryLabelColor
       label.widthAnchor.constraint(equalToConstant: 95).isActive = true
       value.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
+      // Pad status lines such as the power-button instruction can be long.
+      value.lineBreakMode = .byWordWrapping
+      value.maximumNumberOfLines = 0
+      value.preferredMaxLayoutWidth = 300
       let row = NSStackView(views: [label, value])
       row.orientation = .horizontal
       row.spacing = 12
