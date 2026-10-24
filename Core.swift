@@ -162,14 +162,13 @@ func parse(_ arguments: [String]) throws -> (Packet?, [String: Any], Int?) {
   throw PadError("Unknown command: \(command).")
 }
 
-// Byte 10 of a 0x0d/0x81 reply, in 50 RPM units. A value above the pad's range
-// was seen once while it switched off and is not a speed.
+// Byte 10 of a 0x0d/0x81 reply, in 50 RPM units. While the pad's power button
+// has it off, it reports 0 or values far above its range (6,000-11,000 RPM).
 func decodeReportedRPM(_ response: [UInt8]) -> Int? {
   guard response.count == 90, response[5] >= 3, response[8] == 1, response[9] == 5 else {
     return nil
   }
-  let rpm = Int(response[10]) * 50
-  return rpm <= 3500 ? rpm : nil
+  return Int(response[10]) * 50
 }
 
 enum PadCondition: Equatable {
@@ -179,28 +178,54 @@ enum PadCondition: Equatable {
 
 // Compares the pad's reported speed with the last acknowledged command. The
 // pad sends nothing when its buttons are pressed, so this is the only signal.
+// Verdicts need two readings in a row: switching off produces one stray value.
 struct PadWatch {
-  static let tolerance = 300
-  static let settleSeconds = 12.0  // calibrated: ramps settle within 12 s, overshoot stays under 300
+  static let tolerance = 200
+  static let settleSeconds = 12.0  // calibrated: ramps settle within 12 s to within 50 RPM
+  static let maximumRPM = 3500  // above the fan's overshoot; higher reports mean the pad is off
   var commanded: Int?
   var commandedAt: Double?
-  var zeroReads = 0
+  var offReads = 0
+  var changedReads = 0
 
+  static func plausible(_ reported: Int?) -> Int? {
+    reported.flatMap { $0 <= maximumRPM ? $0 : nil }
+  }
   // A changed speed or a correction restarts settling; an unchanged refresh doesn't.
   mutating func acknowledged(_ rpm: Int, now: Double, correction: Bool = false) {
-    if rpm != commanded || correction || commandedAt == nil { commandedAt = now }
+    if rpm != commanded || correction || commandedAt == nil {
+      commandedAt = now
+      changedReads = 0
+    }
     commanded = rpm
   }
   mutating func reset() { self = PadWatch() }
   mutating func observe(_ reported: Int?, now: Double) -> PadCondition {
     guard let reported else {
-      zeroReads = 0
+      offReads = 0
+      changedReads = 0
       return .unknown
     }
-    zeroReads = reported == 0 ? zeroReads + 1 : 0
+    let offSignal = reported == 0 || reported > Self.maximumRPM
+    offReads = offSignal ? offReads + 1 : 0
     guard let commanded, let commandedAt else { return .unknown }
-    guard now - commandedAt >= Self.settleSeconds else { return .settling }
-    if commanded > 0 && reported == 0 { return zeroReads >= 2 ? .padOff : .settling }
-    return abs(reported - commanded) > Self.tolerance ? .changedOnPad(reported) : .matching
+    guard now - commandedAt >= Self.settleSeconds else {
+      changedReads = 0
+      return .settling
+    }
+    if commanded > 0 && offSignal {
+      changedReads = 0
+      return offReads >= 2 ? .padOff : .settling
+    }
+    if commanded == 0 && reported > Self.maximumRPM {
+      changedReads = 0
+      return .unknown
+    }
+    guard abs(reported - commanded) > Self.tolerance else {
+      changedReads = 0
+      return .matching
+    }
+    changedReads += 1
+    return changedReads >= 2 ? .changedOnPad(reported) : .settling
   }
 }

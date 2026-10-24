@@ -111,8 +111,9 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
       DispatchQueue.main.async {
         self.pollPending = false
         guard started == self.generation else { return }
-        self.manualReported = state?["reported_rpm"] as? Int
-        self.manualCondition = self.manualWatch.observe(self.manualReported, now: monotonicNow())
+        let reported = state?["reported_rpm"] as? Int
+        self.manualCondition = self.manualWatch.observe(reported, now: monotonicNow())
+        self.manualReported = PadWatch.plausible(reported)
         if case .changedOnPad(let rpm) = self.manualCondition { self.changedOnPad = rpm }
         if !self.brightnessBusy, let percent = state?["brightness_percent"] as? Double,
           percent.isFinite, (0...100).contains(percent)
@@ -138,9 +139,9 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let manual = !isAuto && reading["mode"] as? String == "manual"
     // A new acknowledged preset clears an earlier change made on the pad.
     if manual, let commanded = reading["commanded_rpm"] as? Int,
-      let stamp = reading["updated_at"] as? String, stamp != manualCommandStamp
+      let stamp = reading["updated_at"] as? String, "\(stamp) \(commanded)" != manualCommandStamp
     {
-      manualCommandStamp = stamp
+      manualCommandStamp = "\(stamp) \(commanded)"
       manualWatch.reset()
       manualWatch.acknowledged(commanded, now: monotonicNow())
       manualCondition = .unknown
@@ -304,6 +305,8 @@ final class CoolingApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.async {
           self.busy = false
           self.lastError = nil
+          // Every acknowledged preset restarts tracking, even within the same second.
+          if rpm != nil { self.manualCommandStamp = nil }
           self.refresh()
         }
       } catch {

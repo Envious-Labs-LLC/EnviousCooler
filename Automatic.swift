@@ -209,7 +209,7 @@ final class Automatic {
         "smoothed_temperature_celsius": governor.smoothed!,
         "sensor_count": sensorCount, "source": "hottest identified Mac chip sensor",
         "commanded_rpm": rpm, "measured_rpm": NSNull(),
-        "reported_rpm": reportedRPM.map { $0 as Any } ?? NSNull(),
+        "reported_rpm": PadWatch.plausible(reportedRPM).map { $0 as Any } ?? NSNull(),
         "pad_override_at": correctedAt.map { ISO8601DateFormatter().string(from: $0) as Any }
           ?? NSNull(),
         "brightness_percent": brightnessPercent.map { $0 as Any } ?? NSNull(),
