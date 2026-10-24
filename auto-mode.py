@@ -107,7 +107,7 @@ def main():
         return
     if service_pid() is not None:
         current = status()
-        if current.get("status") in {"running", "sleeping", "degraded"}:
+        if current.get("status") in {"running", "pad_off", "sleeping", "degraded"}:
             print(json.dumps(current, indent=2))
             return
         raise RuntimeError("Controller is not responding. Turn automatic mode off, then on to restart it.")
@@ -144,7 +144,8 @@ def main():
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         current = status()
-        if current.get("status") == "running":
+        # pad_off is written only after a valid temperature and an acknowledged fan command.
+        if current.get("status") in {"running", "pad_off"}:
             print(json.dumps(current, indent=2))
             return
         if current.get("status") == "degraded":

@@ -244,7 +244,7 @@ def install_locked():
             "RunAtLoad": True, "ProcessType": "Interactive"}), AGENT)
         if current_auto or legacy_auto:
             result = run_locked(sys.executable, str(APP / "Contents/Resources/auto-mode.py"), "on")
-            if json.loads(result.stdout).get("status") != "running":
+            if json.loads(result.stdout).get("status") not in {"running", "pad_off"}:
                 raise RuntimeError("Updated controller did not report healthy operation.")
         if registered(LEGACY_ID) or registered(LEGACY_LABEL):
             raise RuntimeError("Prototype service is still active.")

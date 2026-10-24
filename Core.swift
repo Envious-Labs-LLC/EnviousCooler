@@ -161,3 +161,46 @@ func parse(_ arguments: [String]) throws -> (Packet?, [String: Any], Int?) {
   }
   throw PadError("Unknown command: \(command).")
 }
+
+// Byte 10 of a 0x0d/0x81 reply, in 50 RPM units. A value above the pad's range
+// was seen once while it switched off and is not a speed.
+func decodeReportedRPM(_ response: [UInt8]) -> Int? {
+  guard response.count == 90, response[5] >= 3, response[8] == 1, response[9] == 5 else {
+    return nil
+  }
+  let rpm = Int(response[10]) * 50
+  return rpm <= 3500 ? rpm : nil
+}
+
+enum PadCondition: Equatable {
+  case unknown, settling, matching, padOff
+  case changedOnPad(Int)
+}
+
+// Compares the pad's reported speed with the last acknowledged command. The
+// pad sends nothing when its buttons are pressed, so this is the only signal.
+struct PadWatch {
+  static let tolerance = 300
+  static let settleSeconds = 12.0  // calibrated: ramps settle within 12 s, overshoot stays under 300
+  var commanded: Int?
+  var commandedAt: Double?
+  var zeroReads = 0
+
+  // A changed speed or a correction restarts settling; an unchanged refresh doesn't.
+  mutating func acknowledged(_ rpm: Int, now: Double, correction: Bool = false) {
+    if rpm != commanded || correction || commandedAt == nil { commandedAt = now }
+    commanded = rpm
+  }
+  mutating func reset() { self = PadWatch() }
+  mutating func observe(_ reported: Int?, now: Double) -> PadCondition {
+    guard let reported else {
+      zeroReads = 0
+      return .unknown
+    }
+    zeroReads = reported == 0 ? zeroReads + 1 : 0
+    guard let commanded, let commandedAt else { return .unknown }
+    guard now - commandedAt >= Self.settleSeconds else { return .settling }
+    if commanded > 0 && reported == 0 { return zeroReads >= 2 ? .padOff : .settling }
+    return abs(reported - commanded) > Self.tolerance ? .changedOnPad(reported) : .matching
+  }
+}

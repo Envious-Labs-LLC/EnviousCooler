@@ -38,6 +38,17 @@ Normal controls never request below 800 RPM. The original 500 RPM curve coincide
 
 The RGB slider changes brightness from 0 to 100% and keeps the current effect. The device setting is read back before success is shown. While automatic cooling runs, lighting commands go through that same controller and do not pause cooling. Manual presets pause automatic cooling.
 
+### The pad's own buttons
+
+The pad's power, fan and lighting buttons cannot be disabled, and pressing them sends nothing to the Mac. The app instead reads the speed the pad reports (`0x0d/0x81`) and its brightness:
+
+- Automatic cooling compares the reported speed with its last acknowledged command, after a 12-second settle window. If the fan button changed the speed, it sends its own speed again and the menu briefly says so.
+- With a manual preset, the menu polls every 3 seconds. A fan-button change removes the preset's checkmark and shows the pad's speed until you pick a preset again.
+- Two zero readings while a speed is requested mean the pad's power button turned it off. A command from the Mac cannot turn it back on, so the menu asks you to press the button.
+- The brightness slider follows the lighting button.
+
+The reported speed follows commands and buttons with ramps and overshoot, but it is not verified against an independent tachometer, so the app labels it "pad reports".
+
 USB loss is handled through a removal callback and retries. Sensor failure requests maximum cooling where reachable. Sleep requests fan off; wake resets sensor history. Cancelled sleep and a missed wake notification also have recovery paths. Stopping automatic cooling requests 1,500 RPM while awake and reports whether restoration was acknowledged.
 
 ## Build and install

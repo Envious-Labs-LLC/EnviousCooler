@@ -47,6 +47,14 @@ class ServiceChecks(unittest.TestCase):
         self.write(self.state(pid=99999))
         self.assertNotEqual(service.status().get("status"), "running")
 
+    def test_pad_off_is_reported_only_when_fresh_and_owned(self):
+        self.write(self.state(status="pad_off"))
+        self.assertEqual(service.status()["status"], "pad_off")
+        self.write(self.state(20, status="pad_off"))
+        self.assertEqual(service.status()["status"], "unresponsive")
+        self.write(self.state(status="pad_off", pid=99999))
+        self.assertNotEqual(service.status().get("status"), "pad_off")
+
     def test_file_cannot_override_launchd_authority(self):
         self.write(self.state(running=False, enabled=True))
         result = service.status()
