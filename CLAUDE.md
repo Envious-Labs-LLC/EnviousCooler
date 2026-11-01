@@ -27,6 +27,6 @@ The normal app has an 800 RPM minimum. Low-speed experiments require the separat
 
 The temperature API is private. Verify the actual Mac model before claiming sensor coverage. Commanded RPM is not measured RPM. Physical sleep/reconnect validation remains distinct from fake-device tests.
 
-Keep captured device files, serial numbers, runtime logs and `.review/` records out of public commits. The GitHub workflow uses only standard public-repository runners, no artifact uploads or caches.
+Keep captured device files, serial numbers and runtime logs out of public commits. Review records (Codex output, audits, evidence) go into a `~/.claude/bin/artifact new <slug>` run folder, never the repo; the old `.review/` records moved there on 2026-11-01 and resolve with `~/.claude/bin/artifact path .review/<file>`. The GitHub workflow uses only standard public-repository runners, no artifact uploads or caches.
 
 The project has no configured Discord session-log script or channel. Do not invent a webhook or post to another project's channel.
